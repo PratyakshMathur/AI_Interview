@@ -1,0 +1,82 @@
+2026-01-31 13:15:35,798 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-31 13:15:35,798 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("sessions")
+2026-01-31 13:15:35,798 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-01-31 13:15:35,798 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("events")
+2026-01-31 13:15:35,798 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-01-31 13:15:35,798 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("ai_interactions")
+2026-01-31 13:15:35,798 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-01-31 13:15:35,798 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("features")
+2026-01-31 13:15:35,798 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-01-31 13:15:35,798 INFO sqlalchemy.engine.Engine COMMIT
+Database tables created successfully
+Database initialized successfully
+Database initialized successfully
+INFO:     Will watch for changes in these directories: ['/Users/pratyaksh/UTA/AI_Interview_v1/backend']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [27620] using WatchFiles
+2026-01-31 13:15:36,115 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-31 13:15:36,115 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("sessions")
+2026-01-31 13:15:36,115 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-01-31 13:15:36,115 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("events")
+2026-01-31 13:15:36,115 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-01-31 13:15:36,115 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("ai_interactions")
+2026-01-31 13:15:36,115 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-01-31 13:15:36,115 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("features")
+2026-01-31 13:15:36,115 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-01-31 13:15:36,115 INFO sqlalchemy.engine.Engine COMMIT
+Database tables created successfully
+Database initialized successfully
+Database initialized successfully
+2026-01-31 13:15:36,140 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-31 13:15:36,140 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("sessions")
+2026-01-31 13:15:36,140 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-01-31 13:15:36,140 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("events")
+2026-01-31 13:15:36,140 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-01-31 13:15:36,140 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("ai_interactions")
+2026-01-31 13:15:36,140 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-01-31 13:15:36,140 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("features")
+2026-01-31 13:15:36,140 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-01-31 13:15:36,140 INFO sqlalchemy.engine.Engine COMMIT
+INFO:     Started server process [27672]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+Database tables created successfully
+Database initialized successfully
+Database initialized successfully
+INFO:     127.0.0.1:49417 - "POST /session HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49420 - "GET /docs HTTP/1.1" 200 OK
+2026-01-31 13:16:15,450 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-31 13:16:15,451 INFO sqlalchemy.engine.Engine INSERT INTO sessions (session_id, candidate_name, interviewer_name, problem_statement, start_time, end_time, status, session_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+2026-01-31 13:16:15,451 INFO sqlalchemy.engine.Engine [generated in 0.00013s] ('506044f9-cb14-4eab-8114-738eb161840f', 'John Doe', 'Jane Smith', 'Write a function to reverse a string', '2026-01-31 19:16:15.451670', None, 'active', '{}')
+2026-01-31 13:16:15,452 INFO sqlalchemy.engine.Engine COMMIT
+2026-01-31 13:16:15,453 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-31 13:16:15,453 INFO sqlalchemy.engine.Engine SELECT sessions.session_id, sessions.candidate_name, sessions.interviewer_name, sessions.problem_statement, sessions.start_time, sessions.end_time, sessions.status, sessions.session_data 
+FROM sessions 
+WHERE sessions.session_id = ?
+2026-01-31 13:16:15,453 INFO sqlalchemy.engine.Engine [generated in 0.00005s] ('506044f9-cb14-4eab-8114-738eb161840f',)
+2026-01-31 13:16:15,454 INFO sqlalchemy.engine.Engine INSERT INTO events (event_id, session_id, timestamp, event_type, event_metadata, sequence_number) VALUES (?, ?, ?, ?, ?, ?)
+2026-01-31 13:16:15,454 INFO sqlalchemy.engine.Engine [generated in 0.00008s] ('6e7d85ad-0dc1-4f54-a62a-d3c9ff898fc1', '506044f9-cb14-4eab-8114-738eb161840f', '2026-01-31 19:16:15.454400', 'SESSION_START', '{"candidate_name": "John Doe"}', 1)
+2026-01-31 13:16:15,454 INFO sqlalchemy.engine.Engine COMMIT
+2026-01-31 13:16:15,455 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-31 13:16:15,455 INFO sqlalchemy.engine.Engine SELECT sessions.session_id AS sessions_session_id, sessions.candidate_name AS sessions_candidate_name, sessions.interviewer_name AS sessions_interviewer_name, sessions.problem_statement AS sessions_problem_statement, sessions.start_time AS sessions_start_time, sessions.end_time AS sessions_end_time, sessions.status AS sessions_status, sessions.session_data AS sessions_session_data 
+FROM sessions 
+WHERE sessions.session_id = ?
+2026-01-31 13:16:15,455 INFO sqlalchemy.engine.Engine [generated in 0.00005s] ('506044f9-cb14-4eab-8114-738eb161840f',)
+INFO:     127.0.0.1:49434 - "POST /api/sessions HTTP/1.1" 200 OK
+2026-01-31 13:16:15,455 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-01-31 13:16:21,202 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-31 13:16:21,203 INFO sqlalchemy.engine.Engine SELECT events.event_id AS events_event_id, events.session_id AS events_session_id, events.timestamp AS events_timestamp, events.event_type AS events_event_type, events.event_metadata AS events_event_metadata, events.sequence_number AS events_sequence_number 
+FROM events 
+WHERE events.session_id = ? ORDER BY events.sequence_number DESC
+ LIMIT ? OFFSET ?
+2026-01-31 13:16:21,203 INFO sqlalchemy.engine.Engine [generated in 0.00008s] ('506044f9-cb14-4eab-8114-738eb161840f', 1, 0)
+2026-01-31 13:16:21,203 INFO sqlalchemy.engine.Engine INSERT INTO events (event_id, session_id, timestamp, event_type, event_metadata, sequence_number) VALUES (?, ?, ?, ?, ?, ?)
+2026-01-31 13:16:21,203 INFO sqlalchemy.engine.Engine [cached since 5.749s ago] ('57fb4837-0205-4a0a-a8ce-6291efc281c1', '506044f9-cb14-4eab-8114-738eb161840f', '2026-01-31 19:16:21.203668', 'code_edit', '{"code": "def reverse_string(s): return s[::-1]"}', 2)
+2026-01-31 13:16:21,203 INFO sqlalchemy.engine.Engine COMMIT
+2026-01-31 13:16:21,204 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-31 13:16:21,204 INFO sqlalchemy.engine.Engine SELECT events.event_id, events.session_id, events.timestamp, events.event_type, events.event_metadata, events.sequence_number 
+FROM events 
+WHERE events.event_id = ?
+2026-01-31 13:16:21,204 INFO sqlalchemy.engine.Engine [generated in 0.00005s] ('57fb4837-0205-4a0a-a8ce-6291efc281c1',)
+INFO:     127.0.0.1:49436 - "POST /api/events HTTP/1.1" 200 OK
+2026-01-31 13:16:21,205 INFO sqlalchemy.engine.Engine ROLLBACK
