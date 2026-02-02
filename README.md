@@ -1,4 +1,4 @@
-# AI Interview Platform MVP
+# AIAI is AI-Assisted Interview Platform
 
 An AI-powered behavioral interview platform for data roles that evaluates how candidates solve problems, not just final answers.
 
