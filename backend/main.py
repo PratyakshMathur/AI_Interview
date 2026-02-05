@@ -70,10 +70,16 @@ app.add_middleware(
 import os
 gemini_key = os.getenv("GEMINI_API_KEY")
 if gemini_key:
-    init_ai_engine(gemini_api_key=gemini_key)
-    logger.info("✅ AI Engine initialized with Gemini")
+    ai_engine = init_ai_engine(gemini_api_key=gemini_key)
+    active_model = ai_engine.get_active_model_name() if ai_engine else "Unknown"
+    logger.info(f"✅ AI Engine initialized with {active_model}")
 else:
-    logger.warning("⚠️  GEMINI_API_KEY not set - AI features may be limited")
+    ai_engine = init_ai_engine()  # Try without Gemini (Ollama only)
+    if ai_engine and ai_engine.models:
+        active_model = ai_engine.get_active_model_name()
+        logger.info(f"✅ AI Engine initialized with {active_model}")
+    else:
+        logger.warning("⚠️  No AI models available - AI features will be limited")
 
 # Initialize components (AIHelper needs AI engine to be ready)
 ai_helper = AIHelper()
@@ -175,6 +181,65 @@ def get_problems_db():
     if not PROBLEMS_DB_PATH.exists():
         raise HTTPException(status_code=500, detail="Problems database not found. Run problem_manager/init_db.py")
     return sqlite3.connect(PROBLEMS_DB_PATH)
+
+
+def get_problem_context(problem_id: int) -> Optional[Dict[str, Any]]:
+    """Get problem context for AI prompts"""
+    try:
+        conn = get_problems_db()
+        cursor = conn.cursor()
+        
+        # Get problem details
+        cursor.execute("""
+            SELECT id, title, description, difficulty
+            FROM problems
+            WHERE id = ?
+        """, (problem_id,))
+        
+        problem_row = cursor.fetchone()
+        if not problem_row:
+            conn.close()
+            return None
+        
+        # Get table details
+        cursor.execute("""
+            SELECT table_name, schema_json
+            FROM problem_tables
+            WHERE problem_id = ?
+            ORDER BY table_name
+        """, (problem_id,))
+        
+        tables = []
+        for row in cursor.fetchall():
+            table_name, schema_json = row
+            schema = json.loads(schema_json)
+            
+            # Count rows
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM table_data
+                WHERE problem_id = ? AND table_name = ?
+            """, (problem_id, table_name))
+            row_count = cursor.fetchone()[0]
+            
+            tables.append({
+                "name": table_name,
+                "schema": schema,
+                "row_count": row_count
+            })
+        
+        conn.close()
+        
+        return {
+            "id": problem_row[0],
+            "title": problem_row[1],
+            "description": problem_row[2],
+            "difficulty": problem_row[3],
+            "tables": tables
+        }
+    except Exception as e:
+        logger.error(f"Error fetching problem context: {e}")
+        return None
 
 @app.get("/api/problems")
 async def get_all_problems():
@@ -474,12 +539,19 @@ async def ai_prompt(request: AIPromptRequest, db: Session = Depends(get_db)):
         # Get mode from context_data (default to 'coding')
         mode = request.context_data.get('mode', 'coding') if request.context_data else 'coding'
         
-        # Get AI response with mode support
+        # Get session to retrieve problem_id
+        session = db.query(SessionModel).filter(SessionModel.session_id == request.session_id).first()
+        problem_context = None
+        if session and session.problem_id:
+            problem_context = get_problem_context(session.problem_id)
+        
+        # Get AI response with mode support and problem context
         ai_response = await ai_helper.process_prompt(
             request.user_prompt, 
             request.context_data,
             request.session_id,
-            mode=mode
+            mode=mode,
+            problem_context=problem_context
         )
         
         # Classify intent
@@ -515,16 +587,47 @@ async def ai_prompt(request: AIPromptRequest, db: Session = Depends(get_db)):
             )
             db.add(prompt_event)
             
-            response_event = Event(
-                session_id=request.session_id,
-                event_type="INTERVIEW_QUESTION", 
-                event_metadata={
-                    "question": ai_response,
-                    "interaction_id": interaction.interaction_id
-                },
-                sequence_number=next_seq + 1
-            )
-            db.add(response_event)
+            # Check if we should complete the interview (after 5 Q&A pairs)
+            interview_questions = db.query(Event).filter(
+                Event.session_id == request.session_id,
+                Event.event_type == "INTERVIEW_QUESTION"
+            ).count()
+            
+            should_complete = interview_questions >= 5
+            
+            if should_complete:
+                # Mark interview as complete instead of asking another question
+                ai_response = "Thank you for your thoughtful responses! The interview is now complete. Your session will be available for review."
+                
+                response_event = Event(
+                    session_id=request.session_id,
+                    event_type="INTERVIEW_COMPLETED",
+                    event_metadata={
+                        "message": ai_response,
+                        "total_questions": interview_questions,
+                        "interaction_id": interaction.interaction_id
+                    },
+                    sequence_number=next_seq + 1
+                )
+                db.add(response_event)
+                
+                # Update session phase
+                session = db.query(SessionModel).filter(SessionModel.session_id == request.session_id).first()
+                if session:
+                    session.phase = "completed"
+                    session.end_time = datetime.utcnow()
+            else:
+                response_event = Event(
+                    session_id=request.session_id,
+                    event_type="INTERVIEW_QUESTION", 
+                    event_metadata={
+                        "question": ai_response,
+                        "question_number": interview_questions + 1,
+                        "interaction_id": interaction.interaction_id
+                    },
+                    sequence_number=next_seq + 1
+                )
+                db.add(response_event)
         else:
             # Coding mode events
             prompt_event = Event(
@@ -637,22 +740,28 @@ async def submit_coding_phase(session_id: str, db: Session = Depends(get_db)):
         
         db.commit()
         
-        # Generate first interview question
-        query_events = db.query(Event).filter(
+        # Get problem context for interview question generation
+        problem_context = None
+        if session.problem_id:
+            problem_context = get_problem_context(session.problem_id)
+        
+        # Get SQL query history for context
+        sql_queries = db.query(Event).filter(
             Event.session_id == session_id,
             Event.event_type == "SQL_RUN"
         ).all()
-        
         query_history = [
-            e.event_metadata.get("query_text", "")
-            for e in query_events
-            if e.event_metadata
+            e.event_metadata.get('query', '') 
+            for e in sql_queries 
+            if e.event_metadata and e.event_metadata.get('query')
         ]
         
+        # Generate first interview question using AI with problem context
         first_question = await ai_helper.generate_interview_question(
             session_id=session_id,
             query_history=query_history,
-            question_number=1
+            question_number=1,
+            problem_context=problem_context
         )
         
         # Log interview question
@@ -849,6 +958,56 @@ async def get_sample_data_code():
     """Get Python code to load sample data"""
     from data_loader import SAMPLE_DATA_CODE
     return {"code": SAMPLE_DATA_CODE}
+
+# ===== Notebook Save/Load Endpoints =====
+
+class NotebookSaveRequest(BaseModel):
+    session_id: str
+    cells: List[Dict[str, Any]]
+
+@app.post("/api/notebooks/{session_id}/save")
+async def save_notebook(session_id: str, request: NotebookSaveRequest, db: Session = Depends(get_db)):
+    """Save notebook state for a session"""
+    try:
+        session = db.query(SessionModel).filter(SessionModel.session_id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Save notebook data
+        session.notebook_data = {
+            "cells": request.cells,
+            "saved_at": datetime.utcnow().isoformat()
+        }
+        db.commit()
+        
+        logger.info(f"Saved notebook for session {session_id} with {len(request.cells)} cells")
+        return {"success": True, "message": f"Saved {len(request.cells)} cells"}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error saving notebook: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/notebooks/{session_id}/load")
+async def load_notebook(session_id: str, db: Session = Depends(get_db)):
+    """Load saved notebook state for a session"""
+    try:
+        session = db.query(SessionModel).filter(SessionModel.session_id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        notebook_data = session.notebook_data
+        if not notebook_data:
+            # Return empty/default notebook if none saved
+            return {
+                "cells": [],
+                "saved_at": None
+            }
+        
+        logger.info(f"Loaded notebook for session {session_id}")
+        return notebook_data
+    except Exception as e:
+        logger.error(f"Error loading notebook: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # WebSocket endpoint
 @app.websocket("/ws/{session_id}")

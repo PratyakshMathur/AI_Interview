@@ -57,10 +57,37 @@ def init_database():
     """Initialize database with tables"""
     try:
         create_tables()
+        migrate_database()
         print("Database initialized successfully")
     except Exception as e:
         print(f"Error initializing database: {e}")
         raise
+
+def migrate_database():
+    """Run database migrations to add new columns"""
+    import sqlite3
+    
+    db_file = "./ai_interview.db"
+    if not os.path.exists(db_file):
+        return
+    
+    conn = sqlite3.connect(db_file)
+    cursor = conn.cursor()
+    
+    try:
+        # Check if notebook_data column exists
+        cursor.execute("PRAGMA table_info(sessions)")
+        columns = [row[1] for row in cursor.fetchall()]
+        
+        if 'notebook_data' not in columns:
+            print("📝 Adding notebook_data column to sessions table...")
+            cursor.execute("ALTER TABLE sessions ADD COLUMN notebook_data TEXT")
+            conn.commit()
+            print("✅ Added notebook_data column")
+    except Exception as e:
+        print(f"Migration warning: {e}")
+    finally:
+        conn.close()
 
 if __name__ == "__main__":
     init_database()

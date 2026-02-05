@@ -9,11 +9,13 @@ import { apiService } from '../services/api';
 interface CandidateWorkspaceProps {
   session: Session;
   onEndSession: () => void;
+  viewMode?: 'readonly' | 'normal';
 }
 
 const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
   session,
-  onEndSession
+  onEndSession,
+  viewMode = 'normal'
 }) => {
   const [code, setCode] = useState(
     `# Welcome to your data analysis challenge!
@@ -39,8 +41,8 @@ print("Let's begin the data analysis!")
   const [leftPanelWidth, setLeftPanelWidth] = useState(25); // percentage
   const [rightPanelWidth, setRightPanelWidth] = useState(33); // percentage
   const [outputHeight, setOutputHeight] = useState(192); // pixels
-  const [viewMode, setViewMode] = useState<'editor' | 'notebook'>('notebook'); // Default to notebook
-  const [showAIHelper, setShowAIHelper] = useState(true);
+  const [editorViewMode, setEditorViewMode] = useState<'editor' | 'notebook'>('notebook'); // Default to notebook
+  const [showAIHelper, setShowAIHelper] = useState(viewMode !== 'readonly');
   const [problemDescription, setProblemDescription] = useState<string>('');
   const [loadingProblem, setLoadingProblem] = useState(true);
   const [phase, setPhase] = useState(session.phase || 'coding');
@@ -49,6 +51,8 @@ print("Let's begin the data analysis!")
 
   // Timer effect
   useEffect(() => {
+    if (viewMode === 'readonly') return; // Don't start timer in readonly mode
+    
     const timer = setInterval(() => {
       setTimeRemaining(prev => {
         if (prev <= 1) {
@@ -61,7 +65,7 @@ print("Let's begin the data analysis!")
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [onEndSession]);
+  }, [onEndSession, viewMode]);
 
   // Initialize event tracker
   useEffect(() => {
@@ -210,68 +214,77 @@ print("Let's begin the data analysis!")
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold text-gray-800">
-              Interview Session - {session.candidate_name}
+              {viewMode === 'readonly' ? '📓 Submitted Notebook - ' : 'Interview Session - '}{session.candidate_name}
             </h1>
             <p className="text-sm text-gray-600">
               {session.interviewer_name && `Interviewer: ${session.interviewer_name} • `}
               Session ID: {session.session_id.slice(0, 8)}...
+              {viewMode === 'readonly' && ' • Status: ' + (session.status || 'completed')}
             </p>
           </div>
           
           <div className="flex items-center space-x-4">
-            {/* View Mode Toggle */}
-            <div className="flex bg-gray-200 rounded-md overflow-hidden">
-              <button
-                onClick={() => setViewMode('editor')}
-                className={`px-3 py-1 text-sm ${
-                  viewMode === 'editor' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-transparent text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                📝 Editor
-              </button>
-              <button
-                onClick={() => setViewMode('notebook')}
-                className={`px-3 py-1 text-sm ${
-                  viewMode === 'notebook' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-transparent text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                📓 Notebook
-              </button>
-            </div>
+            {viewMode === 'readonly' ? (
+              <div className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md font-semibold border border-gray-300">
+                👁️ Read-Only View
+              </div>
+            ) : (
+              <>
+                {/* View Mode Toggle */}
+                <div className="flex bg-gray-200 rounded-md overflow-hidden">
+                  <button
+                    onClick={() => setEditorViewMode('editor')}
+                    className={`px-3 py-1 text-sm ${
+                      editorViewMode === 'editor' 
+                        ? 'bg-blue-600 text-white' 
+                        : 'bg-transparent text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    📝 Editor
+                  </button>
+                  <button
+                    onClick={() => setEditorViewMode('notebook')}
+                    className={`px-3 py-1 text-sm ${
+                      editorViewMode === 'notebook' 
+                        ? 'bg-blue-600 text-white' 
+                        : 'bg-transparent text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    📓 Notebook
+                  </button>
+                </div>
 
-            <div className="text-right">
-              <div className={`text-lg font-mono font-semibold ${getTimeColor()}`}>
-                {formatTime(timeRemaining)}
-              </div>
-              <div className="text-xs text-gray-500">Time Remaining</div>
-            </div>
-            
-            {phase === 'coding' && (
-              <button
-                onClick={handleSubmit}
-                disabled={isSubmitting}
-                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSubmitting ? 'Submitting...' : '✓ Submit & Start Interview'}
-              </button>
+                <div className="text-right">
+                  <div className={`text-lg font-mono font-semibold ${getTimeColor()}`}>
+                    {formatTime(timeRemaining)}
+                  </div>
+                  <div className="text-xs text-gray-500">Time Remaining</div>
+                </div>
+                
+                {phase === 'coding' && (
+                  <button
+                    onClick={handleSubmit}
+                    disabled={isSubmitting}
+                    className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSubmitting ? 'Submitting...' : '✓ Submit & Start Interview'}
+                  </button>
+                )}
+                
+                {phase === 'interview' && (
+                  <div className="px-4 py-2 bg-blue-600 text-white rounded-md font-semibold">
+                    📝 Interview Mode
+                  </div>
+                )}
+                
+                <button
+                  onClick={onEndSession}
+                  className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+                >
+                  End Session
+                </button>
+              </>
             )}
-            
-            {phase === 'interview' && (
-              <div className="px-4 py-2 bg-blue-600 text-white rounded-md font-semibold">
-                📝 Interview Mode
-              </div>
-            )}
-            
-            <button
-              onClick={onEndSession}
-              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
-            >
-              End Session
-            </button>
           </div>
         </div>
       </div>
@@ -332,9 +345,9 @@ print("Let's begin the data analysis!")
         {/* Center Panel - Code Editor + Terminal OR Notebook */}
         <div 
           className="flex flex-col"
-          style={{ width: `${100 - leftPanelWidth - (showAIHelper ? rightPanelWidth : 0)}%` }}
+          style={{ width: `${100 - leftPanelWidth - (showAIHelper && viewMode !== 'readonly' ? rightPanelWidth : 0)}%` }}
         >
-          {viewMode === 'editor' ? (
+          {editorViewMode === 'editor' ? (
             <>
               {/* Code Editor */}
               <div className="flex-1 p-4 min-h-0">
@@ -411,12 +424,13 @@ print("Let's begin the data analysis!")
             /* Notebook View */
             <NotebookContainer 
               sessionId={session.session_id}
+              readonly={viewMode === 'readonly'}
             />
           )}
         </div>
 
         {/* Right Panel - AI Chat (Like VS Code sidebar) */}
-        {showAIHelper && (
+        {showAIHelper && viewMode !== 'readonly' && (
           <>
             {/* Resize Handle - Right */}
             <div 
@@ -443,7 +457,9 @@ print("Let's begin the data analysis!")
               style={{ width: `${rightPanelWidth}%` }}
             >
               <div className="bg-gray-100 px-4 py-2 border-b flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-gray-800">💬 AI Assistant</h3>
+                <h3 className="text-sm font-semibold text-gray-800">
+                  {phase === 'interview' ? '🎤 AI Interviewer' : '💬 AI Assistant'}
+                </h3>
                 <button 
                   onClick={() => setShowAIHelper(false)}
                   className="text-gray-500 hover:text-gray-700 text-xs"
@@ -466,7 +482,7 @@ print("Let's begin the data analysis!")
         )}
 
         {/* Toggle AI Helper Button when hidden */}
-        {!showAIHelper && (
+        {!showAIHelper && viewMode !== 'readonly' && (
           <button
             onClick={() => setShowAIHelper(true)}
             className="fixed right-4 top-24 bg-blue-600 text-white px-3 py-2 rounded-l-lg shadow-lg hover:bg-blue-700 transition-colors z-50"
@@ -476,17 +492,6 @@ print("Let's begin the data analysis!")
           </button>
         )}
       </div>
-
-      {/* Toggle AI Helper Button when hidden */}
-      {!showAIHelper && (
-        <button
-          onClick={() => setShowAIHelper(true)}
-          className="fixed right-4 top-24 bg-blue-600 text-white px-3 py-2 rounded-l-lg shadow-lg hover:bg-blue-700 transition-colors z-50"
-          title="Show AI Assistant"
-        >
-          💬
-        </button>
-      )}
 
       {/* Event Indicator */}
       <div className="event-indicator">

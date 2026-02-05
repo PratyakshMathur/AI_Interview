@@ -48,7 +48,8 @@ const AIChat: React.FC<AIChatProps> = ({
 
   // Add initial interview question when mode changes to interview
   useEffect(() => {
-    if (mode === 'interview' && initialQuestion && messages.length === 0) {
+    if (mode === 'interview' && initialQuestion) {
+      // Clear previous messages and show only the interview question
       const aiMessage: Message = {
         id: 'initial-question',
         type: 'ai',

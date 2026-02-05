@@ -12,13 +12,20 @@ interface Cell {
   executionCount: number | null;
   rows?: Array<Record<string, any>>;
   columnNames?: string[];
+  hasChart?: boolean;
+  chartConfig?: {
+    chartType: string;
+    xAxis: string;
+    yAxis: string;
+  };
 }
 
 interface NotebookContainerProps {
   sessionId: string;
+  readonly?: boolean;
 }
 
-const NotebookContainer: React.FC<NotebookContainerProps> = ({ sessionId }) => {
+const NotebookContainer: React.FC<NotebookContainerProps> = ({ sessionId, readonly = false }) => {
   const [cells, setCells] = useState<Cell[]>([
     {
       id: '1',
@@ -35,11 +42,20 @@ const NotebookContainer: React.FC<NotebookContainerProps> = ({ sessionId }) => {
 
   // Initialize event tracker
   React.useEffect(() => {
-    eventTracker.initialize(sessionId);
-    return () => {
-      eventTracker.cleanup();
-    };
-  }, [sessionId]);
+    if (!readonly) {
+      eventTracker.initialize(sessionId);
+      return () => {
+        eventTracker.cleanup();
+      };
+    }
+  }, [sessionId, readonly]);
+
+  // Load saved notebook in readonly mode
+  React.useEffect(() => {
+    if (readonly) {
+      loadNotebook();
+    }
+  }, [readonly, sessionId]);
 
   // Fetch schema info on mount
   React.useEffect(() => {
@@ -54,6 +70,34 @@ const NotebookContainer: React.FC<NotebookContainerProps> = ({ sessionId }) => {
       setSchemaInfo(response.data.schema);
     } catch (error) {
       console.error('Error fetching schema:', error);
+    }
+  };
+
+  const loadNotebook = async () => {
+    try {
+      const response = await axios.get(`http://localhost:8000/api/notebooks/${sessionId}/load`);
+      if (response.data.cells && response.data.cells.length > 0) {
+        setCells(response.data.cells);
+        // Set globalExecutionCount to highest execution count
+        const maxCount = Math.max(...response.data.cells.map((c: Cell) => c.executionCount || 0));
+        setGlobalExecutionCount(maxCount);
+        console.log('Loaded saved notebook with', response.data.cells.length, 'cells');
+      }
+    } catch (error) {
+      console.error('Error loading notebook:', error);
+    }
+  };
+
+  const saveNotebook = async () => {
+    if (readonly) return; // Don't save in readonly mode
+    try {
+      await axios.post(`http://localhost:8000/api/notebooks/${sessionId}/save`, {
+        session_id: sessionId,
+        cells: cells
+      });
+      console.log('Notebook saved successfully');
+    } catch (error) {
+      console.error('Error saving notebook:', error);
     }
   };
 
@@ -86,19 +130,26 @@ const NotebookContainer: React.FC<NotebookContainerProps> = ({ sessionId }) => {
       executionCount: null,
     };
 
+    let newCells;
     if (afterId) {
       const index = cells.findIndex(c => c.id === afterId);
-      const newCells = [...cells];
+      newCells = [...cells];
       newCells.splice(index + 1, 0, newCell);
       setCells(newCells);
     } else {
-      setCells([...cells, newCell]);
+      newCells = [...cells, newCell];
+      setCells(newCells);
     }
+    
+    // Auto-save after adding cell
+    setTimeout(() => saveNotebook(), 100);
   };
 
   const deleteCell = (id: string) => {
     if (cells.length > 1) {
       setCells(cells.filter(c => c.id !== id));
+      // Auto-save after deleting cell
+      setTimeout(() => saveNotebook(), 100);
     }
   };
 
@@ -109,6 +160,12 @@ const NotebookContainer: React.FC<NotebookContainerProps> = ({ sessionId }) => {
     if (cell) {
       eventTracker.trackCodeEdit(code, cell.language);
     }
+  };
+
+  const handleChartToggle = (id: string, show: boolean, chartConfig?: { chartType: string; xAxis: string; yAxis: string }) => {
+    setCells(cells.map(c => c.id === id ? { ...c, hasChart: show, chartConfig: chartConfig || c.chartConfig } : c));
+    // Auto-save when chart state changes
+    setTimeout(() => saveNotebook(), 100);
   };
 
   const executeCell = async (id: string) => {
@@ -178,6 +235,9 @@ const NotebookContainer: React.FC<NotebookContainerProps> = ({ sessionId }) => {
       
       // Track successful execution
       eventTracker.trackRunResult(true, response.data.output);
+      
+      // Save notebook state
+      await saveNotebook();
     } catch (error: any) {
       const errorMessage = error.response?.data?.detail || error.message;
       setCells(cells.map(c =>
@@ -196,6 +256,9 @@ const NotebookContainer: React.FC<NotebookContainerProps> = ({ sessionId }) => {
       // Track execution error
       eventTracker.trackError(errorMessage, { code_snippet: cell.code });
       eventTracker.trackRunResult(false, undefined, errorMessage);
+      
+      // Save notebook state even with errors
+      await saveNotebook();
     }
   };
 
@@ -237,20 +300,22 @@ const NotebookContainer: React.FC<NotebookContainerProps> = ({ sessionId }) => {
           )}
         </div>
 
-        <button
-          onClick={() => addCell()}
-          style={{
-            padding: '4px 12px',
-            background: '#0e639c',
-            border: 'none',
-            borderRadius: '4px',
-            color: 'white',
-            cursor: 'pointer',
-            fontSize: '13px',
-          }}
-        >
-          + Add Cell
-        </button>
+        {!readonly && (
+          <button
+            onClick={() => addCell()}
+            style={{
+              padding: '4px 12px',
+              background: '#0e639c',
+              border: 'none',
+              borderRadius: '4px',
+              color: 'white',
+              cursor: 'pointer',
+              fontSize: '13px',
+            }}
+          >
+            + Add Cell
+          </button>
+        )}
       </div>
 
       {/* Cells Container */}
@@ -270,33 +335,39 @@ const NotebookContainer: React.FC<NotebookContainerProps> = ({ sessionId }) => {
               onCodeChange={(code) => updateCellCode(cell.id, code)}
               onExecute={() => executeCell(cell.id)}
               onDelete={() => deleteCell(cell.id)}
-              canDelete={cells.length > 1}
+              canDelete={cells.length > 1 && !readonly}
               rows={cell.rows}
               columnNames={cell.columnNames}
+              readonly={readonly}
+              hasChart={cell.hasChart}
+              chartConfig={cell.chartConfig}
+              onChartToggle={(show, config) => handleChartToggle(cell.id, show, config)}
             />
-            <div style={{
-              display: 'flex',
-              justifyContent: 'center',
-              margin: '8px 0',
-            }}>
-              <button
-                onClick={() => addCell(cell.id)}
-                style={{
-                  padding: '2px 8px',
-                  background: 'transparent',
-                  border: '1px solid #3e3e42',
-                  borderRadius: '3px',
-                  color: '#858585',
-                  cursor: 'pointer',
-                  fontSize: '11px',
-                  opacity: 0.5,
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                onMouseLeave={(e) => e.currentTarget.style.opacity = '0.5'}
-              >
-                + Code
-              </button>
-            </div>
+            {!readonly && (
+              <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                margin: '8px 0',
+              }}>
+                <button
+                  onClick={() => addCell(cell.id)}
+                  style={{
+                    padding: '2px 8px',
+                    background: 'transparent',
+                    border: '1px solid #3e3e42',
+                    borderRadius: '3px',
+                    color: '#858585',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    opacity: 0.5,
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0.5'}
+                >
+                  + Code
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>

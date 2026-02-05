@@ -365,6 +365,14 @@ const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ sessionId, onBa
               </p>
             </div>
             <div className="flex gap-2">
+              <a
+                href={`/candidate?sessionId=${selectedSessionId}&viewMode=readonly`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center gap-2"
+              >
+                📓 View Notebook
+              </a>
               <button
                 onClick={() => setSelectedSessionId(null)}
                 className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
@@ -450,17 +458,17 @@ const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ sessionId, onBa
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Overall Score</h3>
                 <div className="flex items-center justify-center">
                   <div className="text-6xl font-bold text-blue-600">
-                    {Math.round(aiInsights.overall_score * 100)}
+                    {typeof aiInsights.overall_score === 'number' ? aiInsights.overall_score : aiInsights.overall_score?.score || 0}
                   </div>
                   <div className="ml-2 text-2xl text-gray-500">/ 100</div>
                 </div>
                 <div className="mt-4 text-center">
                   <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
-                    aiInsights.overall_score >= 0.8 ? 'bg-green-100 text-green-800' :
-                    aiInsights.overall_score >= 0.6 ? 'bg-yellow-100 text-yellow-800' :
+                    (typeof aiInsights.overall_score === 'number' ? aiInsights.overall_score : aiInsights.overall_score?.score || 0) >= 80 ? 'bg-green-100 text-green-800' :
+                    (typeof aiInsights.overall_score === 'number' ? aiInsights.overall_score : aiInsights.overall_score?.score || 0) >= 60 ? 'bg-yellow-100 text-yellow-800' :
                     'bg-red-100 text-red-800'
                   }`}>
-                    {getScoreLabel(aiInsights.overall_score)}
+                    {getScoreLabel((typeof aiInsights.overall_score === 'number' ? aiInsights.overall_score : aiInsights.overall_score?.score || 0) / 100)}
                   </span>
                 </div>
               </div>
@@ -481,29 +489,38 @@ const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ sessionId, onBa
               <div className="bg-white rounded-lg shadow p-6">
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Skill Dimensions</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {Object.entries(aiInsights.dimension_scores).map(([dimension, score]: [string, any]) => (
+                  {Object.entries(aiInsights.dimension_scores).map(([dimension, scoreData]: [string, any]) => {
+                    const score = typeof scoreData === 'number' ? scoreData : scoreData?.score || 0;
+                    const confidence = typeof scoreData === 'object' ? scoreData?.confidence : null;
+                    return (
                     <div key={dimension} className="border rounded-lg p-4">
                       <div className="text-sm text-gray-600 mb-2 capitalize">
                         {dimension.replace(/_/g, ' ')}
                       </div>
                       <div className="flex items-end space-x-2">
                         <div className="text-2xl font-bold text-gray-900">
-                          {Math.round(score * 100)}
+                          {score}
                         </div>
                         <div className="text-sm text-gray-500 pb-1">/ 100</div>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
                         <div 
                           className={`h-2 rounded-full ${
-                            score >= 0.8 ? 'bg-green-500' :
-                            score >= 0.6 ? 'bg-yellow-500' :
+                            score >= 80 ? 'bg-green-500' :
+                            score >= 60 ? 'bg-yellow-500' :
                             'bg-red-500'
                           }`}
-                          style={{ width: `${score * 100}%` }}
+                          style={{ width: `${score}%` }}
                         ></div>
                       </div>
+                      {confidence !== null && (
+                        <div className="text-xs text-gray-400 mt-1">
+                          Confidence: {Math.round(confidence * 100)}%
+                        </div>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

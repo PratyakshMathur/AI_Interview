@@ -24,6 +24,39 @@ lsof -ti:8000 | xargs kill -9 2>/dev/null || true
 lsof -ti:3000 | xargs kill -9 2>/dev/null || true
 sleep 1
 
+# Setup Mistral AI
+echo -e "${GREEN}🤖 Setting up Mistral AI...${NC}"
+
+# Check if Ollama is installed
+if ! command -v ollama > /dev/null 2>&1; then
+    echo -e "${RED}❌ Ollama not found. Please install: https://ollama.ai/download${NC}"
+    exit 1
+fi
+
+# Start Ollama service if not running
+if ! pgrep -x "ollama" > /dev/null; then
+    echo -e "${BLUE}🔄 Starting Ollama service...${NC}"
+    ollama serve > /tmp/ollama.log 2>&1 &
+    sleep 2
+fi
+
+# Check if Mistral model is available
+if ! ollama list | grep -q "mistral"; then
+    echo -e "${YELLOW}📥 Downloading Mistral model (4.4 GB)... This may take a few minutes.${NC}"
+    ollama pull mistral
+else
+    echo -e "${GREEN}✅ Mistral model already available${NC}"
+fi
+
+# Verify Ollama is responding
+echo -e "${BLUE}⏳ Verifying Mistral is ready...${NC}"
+if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+    echo -e "${GREEN}✅ Mistral AI ready on http://localhost:11434${NC}"
+else
+    echo -e "${RED}❌ Ollama service not responding${NC}"
+    exit 1
+fi
+
 # Start Backend
 echo -e "${GREEN}📦 Starting Backend Server...${NC}"
 cd backend
@@ -69,7 +102,12 @@ echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━
 echo -e "${BLUE}📍 URLs:${NC}"
 echo -e "   Frontend: ${YELLOW}http://localhost:3000${NC}"
 echo -e "   Backend:  ${YELLOW}http://localhost:8000${NC}"
-echo -e "   API Docs: ${YELLOW}http://localhost:8000/docs${NC}\n"
+echo -e "   API Docs: ${YELLOW}http://localhost:8000/docs${NC}"
+echo -e "   Ollama AI: ${YELLOW}http://localhost:11434${NC}\n"
+
+echo -e "${BLUE}🤖 AI Engine:${NC}"
+echo -e "   Primary: Mistral (Ollama - Local)${NC}"
+echo -e "   Fallback: Google Gemini 1.5 Flash${NC}\n"
 
 echo -e "${BLUE}🔧 Process IDs:${NC}"
 echo -e "   Backend PID: $BACKEND_PID"
@@ -77,7 +115,8 @@ echo -e "   Frontend PID: $FRONTEND_PID\n"
 
 echo -e "${BLUE}📋 Logs:${NC}"
 echo -e "   Backend:  /tmp/backend.log"
-echo -e "   Frontend: /tmp/frontend.log\n"
+echo -e "   Frontend: /tmp/frontend.log"
+echo -e "   Ollama:   /tmp/ollama.log\n"
 
 echo -e "${YELLOW}💡 To stop: Press Ctrl+C or run: kill $BACKEND_PID $FRONTEND_PID${NC}\n"
 
