@@ -15,6 +15,14 @@ interface NotebookCellProps {
   canDelete: boolean;
   rows?: Array<Record<string, any>>;
   columnNames?: string[];
+  readonly?: boolean;
+  hasChart?: boolean;
+  chartConfig?: {
+    chartType: string;
+    xAxis: string;
+    yAxis: string;
+  };
+  onChartToggle?: (show: boolean, chartConfig?: { chartType: string; xAxis: string; yAxis: string }) => void;
 }
 
 const NotebookCell: React.FC<NotebookCellProps> = ({
@@ -29,9 +37,15 @@ const NotebookCell: React.FC<NotebookCellProps> = ({
   canDelete,
   rows,
   columnNames,
+  readonly = false,
+  hasChart = false,
+  chartConfig,
+  onChartToggle,
 }) => {
   const editorRef = useRef<any>(null);
   const [showChartBuilder, setShowChartBuilder] = React.useState(false);
+  const [currentChartConfig, setCurrentChartConfig] = React.useState(chartConfig);
+
 
   const handleEditorMount = (editor: any) => {
     editorRef.current = editor;
@@ -86,40 +100,42 @@ const NotebookCell: React.FC<NotebookCellProps> = ({
           </span>
         </div>
         
-        <div style={{ display: 'flex', gap: '6px' }}>
-          <button
-            onClick={onExecute}
-            style={{
-              padding: '3px 10px',
-              fontSize: '12px',
-              background: '#0e639c',
-              border: 'none',
-              borderRadius: '3px',
-              color: 'white',
-              cursor: 'pointer',
-              fontWeight: 500,
-            }}
-          >
-            ▶ Run
-          </button>
-          
-          {canDelete && (
+        {!readonly && (
+          <div style={{ display: 'flex', gap: '6px' }}>
             <button
-              onClick={onDelete}
+              onClick={onExecute}
               style={{
-                padding: '3px 8px',
+                padding: '3px 10px',
                 fontSize: '12px',
-                background: 'transparent',
-                border: '1px solid #3e3e42',
+                background: '#0e639c',
+                border: 'none',
                 borderRadius: '3px',
-                color: '#cccccc',
+                color: 'white',
                 cursor: 'pointer',
+                fontWeight: 500,
               }}
             >
-              🗑️
+              ▶ Run
             </button>
-          )}
-        </div>
+            
+            {canDelete && (
+              <button
+                onClick={onDelete}
+                style={{
+                  padding: '3px 8px',
+                  fontSize: '12px',
+                  background: 'transparent',
+                  border: '1px solid #3e3e42',
+                  borderRadius: '3px',
+                  color: '#cccccc',
+                  cursor: 'pointer',
+                }}
+              >
+                🗑️
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Code Editor */}
@@ -140,6 +156,7 @@ const NotebookCell: React.FC<NotebookCellProps> = ({
             automaticLayout: true,
             tabSize: 2,
             padding: { top: 8, bottom: 8 },
+            readOnly: readonly,
           }}
         />
       </div>
@@ -158,28 +175,73 @@ const NotebookCell: React.FC<NotebookCellProps> = ({
             <>
               <ResultTable rows={rows} columnNames={columnNames} />
               <div style={{ marginTop: '12px' }}>
-                {!showChartBuilder ? (
-                  <button
-                    onClick={() => setShowChartBuilder(true)}
-                    style={{
-                      padding: '6px 12px',
-                      background: '#10B981',
-                      border: 'none',
-                      borderRadius: '4px',
-                      color: 'white',
-                      cursor: 'pointer',
-                      fontSize: '12px',
-                      fontWeight: 500,
-                    }}
-                  >
-                    📊 Create Chart
-                  </button>
-                ) : (
+                {showChartBuilder ? (
                   <ChartBuilder
                     rows={rows}
                     columnNames={columnNames}
-                    onClose={() => setShowChartBuilder(false)}
+                    onClose={(chartType?: string, xAxis?: string, yAxis?: string) => {
+                      if (chartType && xAxis && yAxis) {
+                        setCurrentChartConfig({ chartType, xAxis, yAxis });
+                        onChartToggle?.(true, { chartType, xAxis, yAxis });
+                      } else {
+                        onChartToggle?.(false);
+                      }
+                      setShowChartBuilder(false);
+                    }}
                   />
+                ) : (
+                  <>
+                    {readonly && hasChart && currentChartConfig ? (
+                      <div style={{
+                        padding: '12px',
+                        background: '#1e3a5f',
+                        borderRadius: '6px',
+                        border: '1px solid #2d5a8f',
+                      }}>
+                        <div style={{ color: '#90caf9', fontSize: '13px', marginBottom: '8px', fontWeight: 500 }}>
+                          📊 Chart Created by Candidate
+                        </div>
+                        <div style={{ color: '#b0bec5', fontSize: '12px', marginBottom: '8px' }}>
+                          Type: <span style={{ color: '#fff', fontWeight: 500 }}>{currentChartConfig.chartType}</span><br/>
+                          X-Axis: <span style={{ color: '#fff', fontWeight: 500 }}>{currentChartConfig.xAxis}</span><br/>
+                          Y-Axis: <span style={{ color: '#fff', fontWeight: 500 }}>{currentChartConfig.yAxis}</span>
+                        </div>
+                        <button
+                          onClick={() => setShowChartBuilder(true)}
+                          style={{
+                            padding: '6px 12px',
+                            background: '#10B981',
+                            border: 'none',
+                            borderRadius: '4px',
+                            color: 'white',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            fontWeight: 500,
+                          }}
+                        >
+                          👁️ View Chart
+                        </button>
+                      </div>
+                    ) : (
+                      !readonly && (
+                        <button
+                          onClick={() => setShowChartBuilder(true)}
+                          style={{
+                            padding: '6px 12px',
+                            background: '#10B981',
+                            border: 'none',
+                            borderRadius: '4px',
+                            color: 'white',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            fontWeight: 500,
+                          }}
+                        >
+                          📊 Create Chart
+                        </button>
+                      )
+                    )}
+                  </>
                 )}
               </div>
             </>

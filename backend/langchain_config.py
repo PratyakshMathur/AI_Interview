@@ -1,12 +1,13 @@
 """
 LangChain configuration for multi-model AI setup with fallback support.
-Supports: Google Gemini (primary), Groq (fallback), Local Ollama (final fallback)
+Supports: Mistral Ollama (primary), Google Gemini (fallback)
 """
 
 import os
 from typing import Optional, Dict, Any, List
+from langchain_community.llms import Ollama
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.schema import HumanMessage, SystemMessage, AIMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 import logging
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,28 @@ class MultiModelAI:
     def _init_models(self):
         """Initialize AI models in priority order"""
         
-        # 1. Google Gemini (Primary) - Free tier, 1M tokens context
+        # Get Ollama base URL from environment (for Docker) or use localhost
+        ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        
+        # 1. Mistral Ollama (Primary) - Local, fast, free
+        try:
+            mistral = Ollama(
+                model="mistral",
+                base_url=ollama_base_url,
+                temperature=0.3
+            )
+            # Test connection
+            mistral.invoke("test")
+            self.models.append({
+                "name": "Mistral (Ollama)",
+                "client": mistral,
+                "type": "ollama"
+            })
+            logger.info(f"✅ Mistral Ollama initialized at {ollama_base_url}")
+        except Exception as e:
+            logger.warning(f"⚠️  Mistral Ollama initialization failed: {e}")
+        
+        # 2. Google Gemini (Fallback) - Free tier, 1M tokens context
         if self.gemini_api_key:
             try:
                 gemini = ChatGoogleGenerativeAI(
@@ -46,13 +68,13 @@ class MultiModelAI:
                     "client": gemini,
                     "type": "gemini"
                 })
-                logger.info("✅ Gemini 1.5 Flash initialized")
+                logger.info("✅ Gemini 1.5 Flash initialized (fallback)")
             except Exception as e:
                 logger.warning(f"⚠️  Gemini initialization failed: {e}")
         
         # Fallback: Log if no models available
         if not self.models:
-            logger.error("❌ No AI models available. Please set GEMINI_API_KEY")
+            logger.error("❌ No AI models available. Install Ollama or set GEMINI_API_KEY")
     
     async def generate(
         self, 
@@ -96,11 +118,19 @@ class MultiModelAI:
                     messages.append(HumanMessage(content=user_message))
                     
                     logger.info(f"🔍 Invoking {model_info['name']} with {len(messages)} messages")
-                    # Generate response
-                    response = model_info["client"].invoke(messages)
                     
-                    logger.info(f"✅ Response from {model_info['name']}: {response.content[:100]}")
-                    return response.content
+                    # Generate response (handle different model types)
+                    if model_info["type"] == "ollama":
+                        # Ollama doesn't use chat format, combine messages
+                        full_prompt = f"{system_prompt}\n\nUser: {user_message}"
+                        response_text = model_info["client"].invoke(full_prompt)
+                        logger.info(f"✅ Response from {model_info['name']}: {response_text[:100]}")
+                        return response_text
+                    else:
+                        # ChatGoogleGenerativeAI uses messages
+                        response = model_info["client"].invoke(messages)
+                        logger.info(f"✅ Response from {model_info['name']}: {response.content[:100]}")
+                        return response.content
                 
                 except Exception as e:
                     logger.warning(
@@ -145,8 +175,8 @@ Do not include any explanation outside the JSON. Just the JSON object."""
         try:
             import json
             return json.loads(response)
-        except:
-            logger.error(f"Failed to parse JSON response: {response[:200]}")
+        except Exception as e:
+            logger.error(f"Failed to parse JSON response: {response[:200]} - Error: {e}")
             return {"error": "Invalid JSON response", "raw": response}
     
     def get_active_model_name(self) -> str:

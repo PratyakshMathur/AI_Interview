@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import SessionSetup from './SessionSetup';
 import CandidateWorkspace from './CandidateWorkspace';
 import ErrorBoundary from './ErrorBoundary';
 import { apiService, SessionCreate, Session } from '../services/api';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 type InterviewState = 'setup' | 'interview' | 'completed';
 
@@ -14,9 +14,31 @@ interface InterviewData {
 
 const CandidatePage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [state, setState] = useState<InterviewState>('setup');
   const [data, setData] = useState<InterviewData>({});
   const [loading, setLoading] = useState(false);
+
+  // Load existing session from URL params if available
+  useEffect(() => {
+    const sessionId = searchParams.get('sessionId');
+    if (sessionId) {
+      setLoading(true);
+      apiService.getSession(sessionId)
+        .then(session => {
+          setData({ session });
+          setState('interview');
+        })
+        .catch(error => {
+          console.error('Failed to load session:', error);
+          setData({ error: 'Failed to load session. Please try again.' });
+          setState('setup');
+        })
+        .finally(() => setLoading(false));
+    }
+  }, [searchParams]);
+
+  const viewMode = searchParams.get('viewMode') as 'readonly' | 'normal' || 'normal';
 
   const handleSessionCreate = async (sessionData: SessionCreate) => {
     setLoading(true);
@@ -97,6 +119,7 @@ const CandidatePage: React.FC = () => {
         <CandidateWorkspace
           session={data.session}
           onEndSession={handleEndSession}
+          viewMode={viewMode}
         />
       </ErrorBoundary>
     );

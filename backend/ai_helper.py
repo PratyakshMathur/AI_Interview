@@ -3,9 +3,7 @@ AI Helper - Candidate-facing AI assistant with coding and interview modes.
 Uses LangChain with Gemini for intelligent, context-aware responses.
 """
 
-import asyncio
 from typing import Dict, Any, Optional, List
-from models import AI_INTENT_LABELS
 from langchain_config import get_ai_engine
 import logging
 
@@ -19,18 +17,39 @@ class AIHelper:
         self.ai_engine = None
         try:
             self.ai_engine = get_ai_engine()
-        except:
-            logger.warning("AI engine not initialized for AIHelper")
+        except Exception as e:
+            logger.warning(f"AI engine not initialized for AIHelper: {e}")
         
         self.conversation_history: Dict[str, List[Dict[str, str]]] = {}
     
-    def _get_coding_system_prompt(self, schema_info: Optional[Dict] = None) -> str:
+    def _get_coding_system_prompt(self, schema_info: Optional[Dict] = None, problem_context: Optional[Dict] = None) -> str:
         """System prompt for coding assistance mode"""
         schema_text = ""
         if schema_info:
             schema_text = f"\n\nAvailable Tables:\n{schema_info}"
         
-        return f"""You are an AI assistant helping a candidate in a SQL coding interview.{schema_text}
+        problem_text = ""
+        if problem_context:
+            problem_text = "\n\nProblem Context:"
+            if problem_context.get('title'):
+                problem_text += f"\nTitle: {problem_context['title']}"
+            if problem_context.get('description'):
+                problem_text += f"\nDescription: {problem_context['description']}"
+            if problem_context.get('tables'):
+                problem_text += "\n\nTables Available:"
+                for table in problem_context['tables']:
+                    problem_text += f"\n- {table['name']} ({table.get('row_count', '?')} rows)"
+                    if table.get('schema'):
+                        # Schema might be dict or list
+                        if isinstance(table['schema'], dict):
+                            columns = ', '.join(table['schema'].keys())
+                        elif isinstance(table['schema'], list):
+                            columns = ', '.join([str(c) for c in table['schema']])
+                        else:
+                            columns = str(table['schema'])
+                        problem_text += f"\n  Columns: {columns}"
+        
+        return f"""You are an AI assistant helping a candidate in a SQL coding interview.{schema_text}{problem_text}
 
 IMPORTANT RULES:
 1. You can EXPLAIN SQL concepts and syntax
@@ -58,43 +77,57 @@ Example Bad Response:
 
 Remember: This evaluates how they collaborate with AI, not their ability to copy code."""
     
-    def _get_interview_system_prompt(self) -> str:
+    def _get_interview_system_prompt(self, problem_context: Optional[Dict] = None) -> str:
         """System prompt for interview mode"""
-        return """You are an AI interviewer conducting a post-coding interview for a data analyst role.
+        problem_text = ""
+        if problem_context:
+            problem_text = "\n\nProblem Context:"
+            if problem_context.get('title'):
+                problem_text += f"\nProblem: {problem_context['title']}"
+            if problem_context.get('description'):
+                problem_text += f"\nDescription: {problem_context['description']}"
+            if problem_context.get('tables'):
+                tables_list = ', '.join([t['name'] for t in problem_context['tables']])
+                problem_text += f"\nTables Used: {tables_list}"
+        
+        return f"""You are an AI interviewer conducting a post-coding interview for a data analyst role.{problem_text}
 
-Your task: Ask thoughtful follow-up questions about their SQL queries and problem-solving approach.
+Your task: Ask ONE SHORT follow-up question about their SQL approach and problem-solving.
 
-Question Types:
-1. **Approach**: "Walk me through your thought process"
-2. **Insights**: "What patterns did you discover in the data?"
-3. **Optimization**: "How would you optimize this query for larger datasets?"
-4. **Trade-offs**: "Why did you choose JOIN over subquery here?"
-5. **Business Impact**: "How would these insights help the business?"
+CRITICAL RULES:
+1. Ask ONLY ONE question - never ask multiple questions
+2. Keep questions SHORT (1-2 sentences maximum)
+3. Focus on ONE specific aspect of their work
+4. Don't dig too deep - stay high-level and practical
+5. Questions should assess thinking, not demand perfect answers
 
-Guidelines:
-- Ask ONE question at a time
-- Be conversational and encouraging
-- Probe deeper on interesting points
-- Evaluate their analytical thinking
-- Keep questions relevant to their actual queries
+Question Types (pick ONE):
+- "Why did you choose [specific approach]?"
+- "What was the most challenging part?"
+- "How would you improve this for production?"
+- "What patterns did you notice in the data?"
+- "What would you do differently next time?"
 
-Your tone should be:
-- Professional but friendly
-- Curious and engaged
-- Supportive, not intimidating
+Your tone: Conversational, encouraging, curious (not interrogating)
 
-Example Questions:
-- "I see you used a LEFT JOIN here. Can you explain why you chose that over INNER JOIN?"
-- "What was the most surprising insight you found in the data?"
-- "If you had more time, how would you extend this analysis?"
-"""
+Example GOOD questions:
+- "Why did you use a LEFT JOIN instead of INNER JOIN here?"
+- "What was your strategy for handling the date calculations?"
+- "How would this query perform with millions of rows?"
+
+Example BAD questions:
+- "Walk me through your thought process. Also, what patterns did you see? And how would you optimize it?" (TOO LONG, MULTIPLE QUESTIONS)
+- "Explain in detail every decision you made in your query structure." (TOO VAGUE, TOO DEMANDING)
+
+Remember: ONE short, specific question. No follow-ups. No multi-part questions."""
     
     async def process_prompt(
         self, 
         user_prompt: str, 
         context_data: Optional[Dict[str, Any]] = None,
         session_id: Optional[str] = None,
-        mode: str = "coding"
+        mode: str = "coding",
+        problem_context: Optional[Dict[str, Any]] = None
     ) -> str:
         """
         Process user prompt with context-aware AI
@@ -104,6 +137,7 @@ Example Questions:
             context_data: Additional context (code, errors, schema)
             session_id: Session ID for conversation history
             mode: 'coding' or 'interview'
+            problem_context: Problem details (title, description, tables)
         
         Returns:
             AI response
@@ -113,10 +147,10 @@ Example Questions:
         
         # Get appropriate system prompt
         if mode == "interview":
-            system_prompt = self._get_interview_system_prompt()
+            system_prompt = self._get_interview_system_prompt(problem_context)
         else:
             schema_info = context_data.get("schema") if context_data else None
-            system_prompt = self._get_coding_system_prompt(schema_info)
+            system_prompt = self._get_coding_system_prompt(schema_info, problem_context)
         
         # Build enhanced user message with context
         enhanced_message = self._build_context_message(user_prompt, context_data)
@@ -180,7 +214,8 @@ Example Questions:
         self,
         session_id: str,
         query_history: List[str],
-        question_number: int = 1
+        question_number: int = 1,
+        problem_context: Optional[Dict[str, Any]] = None
     ) -> str:
         """
         Generate interview question based on candidate's queries
@@ -189,38 +224,59 @@ Example Questions:
             session_id: Session ID
             query_history: List of SQL queries executed
             question_number: Which question number (1-5)
+            problem_context: Problem details for context
         
         Returns:
-            Interview question
+            Interview question (short and focused)
         """
         if not self.ai_engine:
             return "What was your approach to solving this problem?"
         
-        system_prompt = self._get_interview_system_prompt()
+        system_prompt = self._get_interview_system_prompt(problem_context)
         
-        user_message = f"""This is question #{question_number} of the interview.
+        context_text = ""
+        if problem_context:
+            context_text = f"\nProblem: {problem_context.get('title', 'SQL Analysis Task')}"
+        
+        # Vary the focus based on question number
+        focus_areas = [
+            "their overall approach and strategy",
+            "a specific SQL technique or JOIN they used",
+            "how they would handle edge cases or scale this",
+            "what insights or patterns they discovered",
+            "what they learned or would do differently"
+        ]
+        focus = focus_areas[min(question_number - 1, len(focus_areas) - 1)]
+        
+        user_message = f"""This is question #{question_number} of 5 in the interview.{context_text}
 
-Candidate's SQL Queries:
-{chr(10).join([f"{i+1}. {q[:200]}" for i, q in enumerate(query_history[-5:])])}
+Candidate's Recent SQL Queries:
+{chr(10).join([f"{i+1}. {q[:150]}..." for i, q in enumerate(query_history[-3:])])}
 
-Generate ONE thoughtful interview question about their approach, insights, or decision-making."""
+Generate ONE SHORT question (1-2 sentences max) focusing on: {focus}
+
+Do not ask multiple questions. Do not ask for detailed explanations. Keep it conversational."""
 
         try:
             question = await self.ai_engine.generate(
                 system_prompt=system_prompt,
                 user_message=user_message
             )
+            # Truncate if too long (safety check)
+            if len(question) > 200:
+                question = question[:197] + "..."
             return question
-        except:
-            # Fallback questions
-            fallback_questions = [
-                "Walk me through your problem-solving approach for this task.",
-                "What insights did you discover in the data?",
-                "Why did you choose this particular query structure?",
-                "How would you optimize your query for a larger dataset?",
-                "What business recommendations would you make based on your findings?"
+        except Exception as e:
+            logger.error(f"Failed to generate interview question: {e}")
+            # Generic fallback
+            simple_questions = [
+                "What was your overall approach to this problem?",
+                "Why did you choose that SQL technique?",
+                "How would this work with a larger dataset?",
+                "What patterns did you notice in the data?",
+                "What would you improve if you had more time?"
             ]
-            return fallback_questions[min(question_number - 1, len(fallback_questions) - 1)]
+            return simple_questions[min(question_number - 1, len(simple_questions) - 1)]
     
     def classify_intent(self, user_prompt: str) -> str:
         """Classify the intent of user's prompt"""
